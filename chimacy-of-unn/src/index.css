@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  :root {
+    /* Overridden at runtime from Settings (Supabase) so the brand color
+       an admin picks is applied everywhere, on every device, permanently -
+       these defaults are the shipped "white & green" look. */
+    --color-brand-primary: #15803d;
+    --color-brand-accent: #facc15;
+  }
+
+  body {
+    @apply bg-white text-slate-800 dark:bg-slate-950 dark:text-slate-100 font-sans antialiased transition-colors duration-300;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-primary-200 dark:bg-slate-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary-300 dark:bg-slate-600;
+  }
+}
+
+@layer components {
+  /* Glassmorphism card - white with a faint green tint */
+  .glass-card {
+    @apply bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-primary-100/60 dark:border-slate-700/50 shadow-glass dark:shadow-glass-dark rounded-2xl;
+  }
+
+  .glass-panel {
+    @apply bg-primary-50/40 dark:bg-slate-900/40 backdrop-blur-md border border-primary-100/50 dark:border-slate-700/40 rounded-xl;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-sm px-4 py-2.5 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 whitespace-nowrap;
+  }
+
+  .btn-primary {
+    @apply btn text-white shadow-lg hover:-translate-y-0.5;
+    background: linear-gradient(135deg, var(--color-brand-primary), #16a34a);
+    box-shadow: 0 10px 25px -8px color-mix(in srgb, var(--color-brand-primary) 55%, transparent);
+  }
+
+  .btn-secondary {
+    @apply btn bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-primary-200 dark:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-700;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 hover:bg-red-100 dark:hover:bg-red-950;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-slate-600 dark:text-slate-300 hover:bg-primary-50 dark:hover:bg-slate-800;
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border border-primary-100 dark:border-slate-700 bg-white dark:bg-slate-800/60 px-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-all focus:border-primary-400 focus:ring-4 focus:ring-primary-500/10;
+  }
+
+  .label-field {
+    @apply block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+
+  /* Brand-color-aware elements that must reflect the admin's runtime pick */
+  .brand-surface {
+    background: linear-gradient(135deg, var(--color-brand-primary), #14532d);
+  }
+  .brand-text {
+    color: var(--color-brand-primary);
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+}

@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# IMPORTANT: This app requires a Supabase backend to function (see supabase/schema.sql).
+# Set these in Netlify: Site configuration > Environment variables > Add a variable
+#   VITE_SUPABASE_URL      = https://YOUR-PROJECT-REF.supabase.co
+#   VITE_SUPABASE_ANON_KEY = your anon/public key
+# Then trigger a new deploy so the build picks them up.
+
+# Using HashRouter in the app, so no SPA redirect rule is strictly required.
+# This fallback is included for safety in case routing is switched to BrowserRouter later.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
