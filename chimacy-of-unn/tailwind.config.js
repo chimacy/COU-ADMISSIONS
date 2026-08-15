@@ -57,9 +57,9 @@ export default {
         xs: '2px',
       },
       animation: {
-        'fade-in': 'fadeIn 0.4s ease-out',
-        'slide-up': 'slideUp 0.4s ease-out',
-        'scale-in': 'scaleIn 0.25s ease-out',
+        'fade-in': 'fadeIn 0.15s ease-out',
+        'slide-up': 'slideUp 0.15s ease-out',
+        'scale-in': 'scaleIn 0.12s ease-out',
       },
       keyframes: {
         fadeIn: {

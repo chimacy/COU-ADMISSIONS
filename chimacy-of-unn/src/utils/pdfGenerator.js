@@ -13,25 +13,60 @@ function hexToRgb(hex) {
   return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255]
 }
 
+/**
+ * Fetches a remote image URL and converts it to a data URL. jsPDF's
+ * addImage() does not reliably accept a bare remote URL in the browser -
+ * this was why an uploaded logo/signature never actually showed up in
+ * generated PDFs even though the upload itself worked fine. Returns null on
+ * any failure so callers can fall back gracefully instead of breaking PDF
+ * generation entirely.
+ */
+async function urlToDataUrl(url) {
+  if (!url) return null
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  } catch (e) {
+    return null
+  }
+}
+
+function imageFormatFromDataUrl(dataUrl) {
+  if (dataUrl?.startsWith('data:image/png')) return 'PNG'
+  if (dataUrl?.startsWith('data:image/webp')) return 'WEBP'
+  return 'JPEG'
+}
+
 function baseDoc(settings) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const primary = hexToRgb(settings.primary_color)
   return { doc, primary }
 }
 
-function drawHeader(doc, primary, settings, docTitleRight) {
+async function drawHeader(doc, primary, settings, docTitleRight) {
   const pageWidth = doc.internal.pageSize.getWidth()
   const margin = 40
 
   doc.setFillColor(...primary)
   doc.rect(0, 0, pageWidth, 90, 'F')
 
-  doc.setFillColor(255, 255, 255)
-  doc.circle(margin + 20, 45, 20, 'F')
-  doc.setTextColor(...primary)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(16)
-  doc.text(initials(settings.company_name), margin + 20, 50, { align: 'center' })
+  const logoDataUrl = await urlToDataUrl(settings.logo_url)
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, imageFormatFromDataUrl(logoDataUrl), margin, 25, 40, 40)
+    } catch (e) {
+      drawInitialsBadge(doc, primary, settings, margin)
+    }
+  } else {
+    drawInitialsBadge(doc, primary, settings, margin)
+  }
 
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
@@ -50,6 +85,15 @@ function drawHeader(doc, primary, settings, docTitleRight) {
   doc.text(docTitleRight.value, pageWidth - margin, 53, { align: 'right' })
 
   return margin
+}
+
+function drawInitialsBadge(doc, primary, settings, margin) {
+  doc.setFillColor(255, 255, 255)
+  doc.circle(margin + 20, 45, 20, 'F')
+  doc.setTextColor(...primary)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(16)
+  doc.text(initials(settings.company_name), margin + 20, 50, { align: 'center' })
 }
 
 function sectionHeader(doc, primary, title, margin, y) {
@@ -93,16 +137,17 @@ function footerEveryPage(doc, settings) {
 
 /**
  * Generates a professional, multi-page PDF quotation and returns the jsPDF
- * document instance (caller decides to save/preview).
+ * document instance (caller decides to save/preview). Async because the
+ * logo/signature images are fetched and embedded properly.
  */
-export function generateQuotationPDF(quotation, settings) {
+export async function generateQuotationPDF(quotation, settings) {
   const { doc, primary } = baseDoc(settings)
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const currencySymbol = settings.currency_symbol || '\u20a6'
   let y
 
-  const margin = drawHeader(doc, primary, settings, { label: `Quotation No: ${quotation.quotationNumber}`, value: `Date: ${formatDate(quotation.date)}` })
+  const margin = await drawHeader(doc, primary, settings, { label: `Quotation No: ${quotation.quotationNumber}`, value: `Date: ${formatDate(quotation.date)}` })
   y = 120
 
   doc.setTextColor(30, 41, 59)
@@ -203,7 +248,7 @@ export function generateQuotationPDF(quotation, settings) {
     margin, y, { maxWidth: pageWidth - margin * 2 },
   )
   y += 50
-  drawSignatureBlock(doc, settings, margin, pageWidth, y)
+  await drawSignatureBlock(doc, settings, margin, pageWidth, y)
 
   footerEveryPage(doc, settings)
   return doc
@@ -212,13 +257,13 @@ export function generateQuotationPDF(quotation, settings) {
 /**
  * Generates a professional invoice/receipt PDF for a paid client.
  */
-export function generateInvoicePDF(quotation, settings) {
+export async function generateInvoicePDF(quotation, settings) {
   const { doc, primary } = baseDoc(settings)
   const pageWidth = doc.internal.pageSize.getWidth()
   const currencySymbol = settings.currency_symbol || '\u20a6'
   let y
 
-  const margin = drawHeader(doc, primary, settings, { label: `Invoice No: ${quotation.invoiceNumber || '-'}`, value: `Date: ${formatDate(quotation.paidDate)}` })
+  const margin = await drawHeader(doc, primary, settings, { label: `Invoice No: ${quotation.invoiceNumber || '-'}`, value: `Date: ${formatDate(quotation.paidDate)}` })
   y = 120
 
   doc.setTextColor(30, 41, 59)
@@ -280,12 +325,12 @@ export function generateInvoicePDF(quotation, settings) {
   doc.text('This invoice confirms receipt of payment. Refunds are subject to the Rules & Guidelines on file.', margin, y, { maxWidth: pageWidth - margin * 2 })
   y += 40
 
-  drawSignatureBlock(doc, settings, margin, pageWidth, y)
+  await drawSignatureBlock(doc, settings, margin, pageWidth, y)
   footerEveryPage(doc, settings)
   return doc
 }
 
-function drawSignatureBlock(doc, settings, margin, pageWidth, y) {
+async function drawSignatureBlock(doc, settings, margin, pageWidth, y) {
   const colWidth = (pageWidth - margin * 2 - 40) / 2
   doc.setDrawColor(148, 163, 184)
   doc.line(margin, y, margin + colWidth, y)
@@ -295,21 +340,30 @@ function drawSignatureBlock(doc, settings, margin, pageWidth, y) {
   doc.text('Client Signature & Date', margin, y + 14)
   doc.text(`Authorized Signature (${settings.company_name || 'CHIMACY OF UNN'})`, margin + colWidth + 40, y + 14)
 
-  if (settings.signature_url) {
+  const signatureDataUrl = await urlToDataUrl(settings.signature_url)
+  if (signatureDataUrl) {
     try {
-      doc.addImage(settings.signature_url, 'PNG', margin + colWidth + 40, y - 45, 100, 40)
+      doc.addImage(signatureDataUrl, imageFormatFromDataUrl(signatureDataUrl), margin + colWidth + 40, y - 45, 100, 40)
     } catch (e) {
-      // ignore invalid/unreachable image data - signature is optional
+      // ignore - signature is a nice-to-have, never blocks the document
     }
   }
 }
 
-export function downloadQuotationPDF(quotation, settings) {
-  const doc = generateQuotationPDF(quotation, settings)
-  doc.save(`Quotation-${quotation.quotationNumber || 'draft'}.pdf`)
+export async function downloadQuotationPDF(quotation, settings) {
+  try {
+    const doc = await generateQuotationPDF(quotation, settings)
+    doc.save(`Quotation-${quotation.quotationNumber || 'draft'}.pdf`)
+  } catch (err) {
+    alert('Could not generate the PDF. Please try again.')
+  }
 }
 
-export function downloadInvoicePDF(quotation, settings) {
-  const doc = generateInvoicePDF(quotation, settings)
-  doc.save(`Invoice-${quotation.invoiceNumber || quotation.quotationNumber || 'draft'}.pdf`)
+export async function downloadInvoicePDF(quotation, settings) {
+  try {
+    const doc = await generateInvoicePDF(quotation, settings)
+    doc.save(`Invoice-${quotation.invoiceNumber || quotation.quotationNumber || 'draft'}.pdf`)
+  } catch (err) {
+    alert('Could not generate the PDF. Please try again.')
+  }
 }

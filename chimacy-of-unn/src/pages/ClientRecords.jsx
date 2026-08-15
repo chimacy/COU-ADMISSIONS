@@ -10,7 +10,15 @@ import { getQuotations, deleteQuotation } from '../utils/db.js'
 import { formatCurrency, formatDate } from '../utils/format.js'
 import { statusBadgeStyle } from '../utils/evaluation.js'
 import { useSettings } from '../context/SettingsContext.jsx'
-import { downloadQuotationPDF, downloadInvoicePDF } from '../utils/pdfGenerator.js'
+
+async function downloadQuotationPDF(record, settings) {
+  const mod = await import('../utils/pdfGenerator.js')
+  return mod.downloadQuotationPDF(record, settings)
+}
+async function downloadInvoicePDF(record, settings) {
+  const mod = await import('../utils/pdfGenerator.js')
+  return mod.downloadInvoicePDF(record, settings)
+}
 
 export default function ClientRecords() {
   const navigate = useNavigate()
@@ -117,7 +125,7 @@ export default function ClientRecords() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <button title="View" onClick={() => setViewing(r)} className="btn-ghost !p-2 rounded-lg"><Eye className="h-4 w-4" /></button>
-                          <button title="Edit" onClick={() => navigate(`/new-client?edit=${r.id}`)} className="btn-ghost !p-2 rounded-lg"><Pencil className="h-4 w-4" /></button>
+                          <button title="Edit" onClick={() => navigate(`/admin/new-client?edit=${r.id}`)} className="btn-ghost !p-2 rounded-lg"><Pencil className="h-4 w-4" /></button>
                           <button title="Download PDF" onClick={() => downloadQuotationPDF(r, settings)} className="btn-ghost !p-2 rounded-lg"><FileDown className="h-4 w-4" /></button>
                           <button title="Delete" onClick={() => setDeleting(r)} className="btn-ghost !p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"><Trash2 className="h-4 w-4" /></button>
                         </div>

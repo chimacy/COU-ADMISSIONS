@@ -22,6 +22,10 @@ const FALLBACK_SETTINGS = {
   currency_symbol: '\u20a6',
   primary_color: '#15803d',
   accent_color: '#facc15',
+  secondary_color: '#16a34a',
+  whatsapp_number: '',
+  website: '',
+  flutterwave_public_key: '',
 }
 
 export function SettingsProvider({ children }) {

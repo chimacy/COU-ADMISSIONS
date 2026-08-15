@@ -27,11 +27,11 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
       <div
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-900/60"
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className={`relative w-full ${sizes[size]} glass-card !bg-white/95 dark:!bg-slate-900/95 p-0 max-h-[90vh] flex flex-col animate-scale-in`}>
+      <div className={`relative w-full ${sizes[size]} bg-white dark:bg-slate-900 border border-primary-100 dark:border-slate-700 shadow-xl rounded-2xl p-0 max-h-[90vh] flex flex-col animate-scale-in`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
           <h3 className="text-lg font-bold font-display text-slate-800 dark:text-white">{title}</h3>
           <button onClick={onClose} className="btn-ghost !p-2 rounded-full" aria-label="Close">

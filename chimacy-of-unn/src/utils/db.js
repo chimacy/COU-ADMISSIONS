@@ -1,28 +1,36 @@
 import { supabase } from '../lib/supabaseClient.js'
+import { cached, invalidate } from './cache.js'
 
 /* =============================== PROGRAMMES =============================== */
 
 export async function getProgrammes() {
-  const { data, error } = await supabase.from('programmes').select('*').order('grade').order('name')
-  if (error) throw error
-  return (data || []).map(mapProgrammeFromDb)
+  return cached('programmes', async () => {
+    const { data, error } = await supabase.from('programmes').select('*').order('grade').order('name')
+    if (error) throw error
+    return (data || []).map(mapProgrammeFromDb)
+  })
 }
 
 export async function saveProgramme(programme) {
   const payload = mapProgrammeToDb(programme)
+  let result
   if (programme.id) {
     const { data, error } = await supabase.from('programmes').update(payload).eq('id', programme.id).select().single()
     if (error) throw error
-    return mapProgrammeFromDb(data)
+    result = mapProgrammeFromDb(data)
+  } else {
+    const { data, error } = await supabase.from('programmes').insert(payload).select().single()
+    if (error) throw error
+    result = mapProgrammeFromDb(data)
   }
-  const { data, error } = await supabase.from('programmes').insert(payload).select().single()
-  if (error) throw error
-  return mapProgrammeFromDb(data)
+  invalidate('programmes')
+  return result
 }
 
 export async function deleteProgramme(id) {
   const { error } = await supabase.from('programmes').delete().eq('id', id)
   if (error) throw error
+  invalidate('programmes')
 }
 
 function mapProgrammeFromDb(row) {
@@ -69,29 +77,38 @@ export const GRADE_ORDER = [
 /* ================================== RULES ================================== */
 
 export async function getRules() {
-  const { data, error } = await supabase.from('rules').select('*').order('sort_order')
-  if (error) throw error
-  return (data || []).map((r) => ({ id: r.id, title: r.title, text: r.body }))
+  return cached('rules', async () => {
+    const { data, error } = await supabase.from('rules').select('*').order('sort_order')
+    if (error) throw error
+    return (data || []).map((r) => ({ id: r.id, title: r.title, text: r.body }))
+  })
 }
 
 export async function saveRule(rule, sortOrder = 0) {
   const payload = { title: rule.title || '', body: rule.text, sort_order: sortOrder }
+  let result
   if (rule.id) {
     const { data, error } = await supabase.from('rules').update(payload).eq('id', rule.id).select().single()
     if (error) throw error
-    return { id: data.id, title: data.title, text: data.body }
+    result = { id: data.id, title: data.title, text: data.body }
+  } else {
+    const { data, error } = await supabase.from('rules').insert(payload).select().single()
+    if (error) throw error
+    result = { id: data.id, title: data.title, text: data.body }
   }
-  const { data, error } = await supabase.from('rules').insert(payload).select().single()
-  if (error) throw error
-  return { id: data.id, title: data.title, text: data.body }
+  invalidate('rules')
+  return result
 }
 
 export async function deleteRule(id) {
   const { error } = await supabase.from('rules').delete().eq('id', id)
   if (error) throw error
+  invalidate('rules')
 }
 
 /* ============================== QUOTATIONS/CLIENTS ============================== */
+/* Not cached - this data changes constantly and admins need to see the
+   latest state (payments, new clients) every time they open the page. */
 
 export async function getQuotations() {
   const { data, error } = await supabase.from('quotations').select('*').order('created_at', { ascending: false })
@@ -127,15 +144,28 @@ export async function deleteQuotation(id) {
   if (error) throw error
 }
 
-export async function markQuotationPaid(id, { amount, method, date, invoiceNumber }) {
+export async function markQuotationPaid(id, { amount, method, date }) {
   const payload = {
     paid: true,
     paid_amount: amount,
     payment_method: method,
     paid_date: date,
-    invoice_number: invoiceNumber,
   }
   const { data, error } = await supabase.from('quotations').update(payload).eq('id', id).select().single()
+  if (error) throw error
+  return mapQuotationFromDb(data)
+}
+
+/**
+ * Generates (assigns) an invoice number for an already-paid quotation. This
+ * is a deliberate, separate admin action - confirming payment must never
+ * automatically create or download an invoice.
+ */
+export async function generateInvoiceNumber(id) {
+  const existing = await getQuotationById(id)
+  if (existing?.invoiceNumber) return existing // already generated - idempotent
+  const invoiceNumber = `INV-${(existing?.quotationNumber || '').replace('CHM-', '') || Date.now()}`
+  const { data, error } = await supabase.from('quotations').update({ invoice_number: invoiceNumber }).eq('id', id).select().single()
   if (error) throw error
   return mapQuotationFromDb(data)
 }
@@ -195,11 +225,154 @@ function mapQuotationToDb(q) {
   }
 }
 
+/* ============================== ASSISTANCE REQUESTS (admin side) ============================== */
+
+export async function getRequests() {
+  const { data, error } = await supabase.from('requests').select('*').order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map(mapRequestFromDb)
+}
+
+export async function getRequestById(id) {
+  const { data, error } = await supabase.from('requests').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data ? mapRequestFromDb(data) : null
+}
+
+export async function updateRequestStatus(id, status) {
+  const { data, error } = await supabase.from('requests').update({ status }).eq('id', id).select().single()
+  if (error) throw error
+  return mapRequestFromDb(data)
+}
+
+export async function getRequestStatusHistory(requestId) {
+  const { data, error } = await supabase
+    .from('request_status_history')
+    .select('*')
+    .eq('request_id', requestId)
+    .order('changed_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function getRequestNotes(requestId) {
+  const { data, error } = await supabase
+    .from('request_notes')
+    .select('*')
+    .eq('request_id', requestId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function addRequestNote(requestId, note) {
+  const { data: userData } = await supabase.auth.getUser()
+  const { data: profile } = await supabase.from('admin_profiles').select('display_name').eq('id', userData?.user?.id).maybeSingle()
+  const { data, error } = await supabase
+    .from('request_notes')
+    .insert({
+      request_id: requestId,
+      admin_id: userData?.user?.id || null,
+      admin_name: profile?.display_name || userData?.user?.email || 'Admin',
+      note,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+/**
+ * Accepts a request and converts it into a full client record (quotation) so
+ * every existing downstream workflow (Client Records, Checkout, invoices,
+ * PDFs) keeps working unchanged - no pricing/eligibility logic is
+ * duplicated between the two tables.
+ */
+export async function acceptRequestAndConvert(request) {
+  const quotation = await saveQuotation({
+    clientName: request.fullName,
+    phone: request.phone,
+    email: request.email,
+    jambRegNumber: request.jambRegNumber,
+    jambScore: request.jambScore,
+    programmeId: request.programmeId,
+    programme: request.programmeName,
+    programmeGrade: request.programmeGrade,
+    workingType: request.workingType,
+    price: request.price,
+    status: request.eligibilityStatus,
+    benchmarkStatus: request.benchmarkStatus,
+    recommendation: request.recommendation,
+    category: 'New Application',
+    remarks: request.additionalNotes,
+    date: new Date().toISOString().slice(0, 10),
+    rulesSnapshot: await getRules(),
+  })
+
+  const { data, error } = await supabase
+    .from('requests')
+    .update({ status: 'ACCEPTED', linked_quotation_id: quotation.id })
+    .eq('id', request.id)
+    .select()
+    .single()
+  if (error) throw error
+  return { request: mapRequestFromDb(data), quotation }
+}
+
+function mapRequestFromDb(row) {
+  return {
+    id: row.id,
+    requestNumber: row.request_number,
+    fullName: row.full_name,
+    phone: row.phone,
+    email: row.email,
+    jambRegNumber: row.jamb_reg_number,
+    jambScore: row.jamb_score,
+    institution: row.institution,
+    programmeId: row.programme_id,
+    programmeName: row.programme_name,
+    programmeGrade: row.programme_grade,
+    workingType: row.working_type,
+    price: Number(row.price) || 0,
+    eligibilityStatus: row.eligibility_status,
+    benchmarkStatus: row.benchmark_status,
+    recommendation: row.recommendation,
+    additionalNotes: row.additional_notes,
+    termsAccepted: row.terms_accepted,
+    termsAcceptedAt: row.terms_accepted_at,
+    status: row.status,
+    linkedQuotationId: row.linked_quotation_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+export const REQUEST_STATUSES = [
+  'PENDING', 'UNDER_REVIEW', 'ACCEPTED', 'CONTACTED', 'PAYMENT_PENDING',
+  'PAYMENT_CONFIRMED', 'PROCESSING', 'COMPLETED', 'REJECTED', 'CANCELLED',
+]
+
+/* ============================== ADMIN PROFILES (Administrators page) ============================== */
+
+export async function getAdminProfiles() {
+  const { data, error } = await supabase.from('admin_profiles').select('*').order('created_at')
+  if (error) throw error
+  return data || []
+}
+
+export async function updateAdminProfile(id, patch) {
+  const { data, error } = await supabase.from('admin_profiles').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
 /* ============================== BACKUP (export only) ============================== */
 
 export async function exportAllData() {
-  const [programmes, rules, quotations] = await Promise.all([
-    getProgrammes(), getRules(), getQuotations(),
+  const [programmes, rules, quotations, requests] = await Promise.all([
+    getProgrammes(), getRules(), getQuotations(), getRequests(),
   ])
-  return { programmes, rules, quotations, exportedAt: new Date().toISOString() }
+  return {
+    programmes, rules, quotations, requests, exportedAt: new Date().toISOString(),
+  }
 }

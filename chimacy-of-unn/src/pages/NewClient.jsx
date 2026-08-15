@@ -10,7 +10,10 @@ import {
 import { evaluateCandidate, suggestAlternatives, statusBadgeStyle, WORKING_TYPE } from '../utils/evaluation.js'
 import { formatCurrency } from '../utils/format.js'
 import { useSettings } from '../context/SettingsContext.jsx'
-import { downloadQuotationPDF } from '../utils/pdfGenerator.js'
+async function downloadQuotationPDF(record, settings) {
+  const mod = await import('../utils/pdfGenerator.js')
+  return mod.downloadQuotationPDF(record, settings)
+}
 
 const emptyForm = {
   clientName: '',
@@ -142,7 +145,7 @@ export default function NewClient() {
       if (andDownload) {
         downloadQuotationPDF(persisted, settings)
       }
-      setTimeout(() => navigate('/clients'), andDownload ? 600 : 0)
+      setTimeout(() => navigate('/admin/clients'), andDownload ? 600 : 0)
     } catch (err) {
       alert(err.message || 'Failed to save client record.')
     } finally {

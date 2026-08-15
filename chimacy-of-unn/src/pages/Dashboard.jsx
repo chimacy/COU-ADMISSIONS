@@ -2,23 +2,24 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   UserPlus, Users, FileText, Database, Settings as SettingsIcon,
-  TrendingUp, CheckCircle2, AlertTriangle, Wallet, ArrowRight, CreditCard, Loader2,
+  TrendingUp, CheckCircle2, AlertTriangle, Wallet, ArrowRight, CreditCard, Loader2, Inbox,
 } from 'lucide-react'
 import DashboardLayout from '../components/Layout/DashboardLayout.jsx'
 import Card from '../components/UI/Card.jsx'
 import { StatCard } from '../components/UI/Badge.jsx'
-import { getQuotations, getProgrammes } from '../utils/db.js'
+import { getQuotations, getProgrammes, getRequests } from '../utils/db.js'
 import { formatCurrency, formatDate } from '../utils/format.js'
 import { useSettings } from '../context/SettingsContext.jsx'
 import { STATUS, statusBadgeStyle } from '../utils/evaluation.js'
 
 const actions = [
-  { to: '/new-client', label: 'New Client', desc: 'Register a new prospect', icon: UserPlus, accent: 'primary' },
-  { to: '/clients', label: 'Client Records', desc: 'View & manage all clients', icon: Users, accent: 'accent' },
-  { to: '/quotation', label: 'Generate Quotation', desc: 'Create a PDF quotation', icon: FileText, accent: 'gold' },
-  { to: '/checkout', label: 'Checkout & Invoices', desc: 'Record payments, generate invoices', icon: CreditCard, accent: 'emerald' },
-  { to: '/pricing', label: 'Pricing Database', desc: 'Browse programmes & fees', icon: Database, accent: 'primary' },
-  { to: '/settings', label: 'Settings', desc: 'Company & branding setup', icon: SettingsIcon, accent: 'accent' },
+  { to: '/admin/requests', label: 'Assistance Requests', desc: 'Review new client requests', icon: Inbox, accent: 'gold' },
+  { to: '/admin/new-client', label: 'New Client', desc: 'Register a new prospect', icon: UserPlus, accent: 'primary' },
+  { to: '/admin/clients', label: 'Client Records', desc: 'View & manage all clients', icon: Users, accent: 'accent' },
+  { to: '/admin/quotation', label: 'Generate Quotation', desc: 'Create a PDF quotation', icon: FileText, accent: 'gold' },
+  { to: '/admin/payments', label: 'Checkout & Invoices', desc: 'Record payments, generate invoices', icon: CreditCard, accent: 'emerald' },
+  { to: '/admin/pricing', label: 'Pricing Database', desc: 'Browse programmes & fees', icon: Database, accent: 'primary' },
+  { to: '/admin/settings', label: 'Settings', desc: 'Company & branding setup', icon: SettingsIcon, accent: 'accent' },
 ]
 
 export default function Dashboard() {
@@ -26,11 +27,16 @@ export default function Dashboard() {
   const { settings } = useSettings()
   const [quotations, setQuotations] = useState([])
   const [programmeCount, setProgrammeCount] = useState(0)
+  const [pendingRequests, setPendingRequests] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([getQuotations(), getProgrammes()])
-      .then(([q, p]) => { setQuotations(q); setProgrammeCount(p.length) })
+    Promise.all([getQuotations(), getProgrammes(), getRequests()])
+      .then(([q, p, r]) => {
+        setQuotations(q)
+        setProgrammeCount(p.length)
+        setPendingRequests(r.filter((x) => x.status === 'PENDING' || x.status === 'UNDER_REVIEW').length)
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -73,17 +79,19 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <button onClick={() => navigate('/admin/requests')} className="text-left">
+            <StatCard icon={Inbox} label="Pending Requests" value={pendingRequests} accent="gold" />
+          </button>
           <StatCard icon={FileText} label="Total Quotations" value={stats.total} accent="primary" />
           <StatCard icon={CheckCircle2} label="Eligible Clients" value={stats.eligible} accent="emerald" />
           <StatCard icon={CreditCard} label="Clients Paid" value={stats.paidCount} accent="accent" />
-          <StatCard icon={Wallet} label="Total Collected" value={formatCurrency(stats.totalCollected, settings.currency_symbol)} accent="primary" />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard icon={Wallet} label="Total Collected" value={formatCurrency(stats.totalCollected, settings.currency_symbol)} accent="primary" />
           <StatCard icon={AlertTriangle} label="Below Benchmark" value={stats.notEligible} accent="gold" />
           <StatCard icon={Wallet} label="Outstanding Pipeline" value={formatCurrency(stats.pipelineValue, settings.currency_symbol)} accent="accent" />
           <StatCard icon={Database} label="Programmes" value={programmeCount} accent="primary" />
-          <StatCard icon={Users} label="Institution" value="UNN" accent="emerald" />
         </div>
 
         <div>
@@ -120,7 +128,7 @@ export default function Dashboard() {
               <h3 className="font-bold font-display text-slate-800 dark:text-white flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-primary-600" /> Recent Quotations
               </h3>
-              <button onClick={() => navigate('/clients')} className="text-xs font-semibold text-primary-700 dark:text-primary-400 hover:underline">View all</button>
+              <button onClick={() => navigate('/admin/clients')} className="text-xs font-semibold text-primary-700 dark:text-primary-400 hover:underline">View all</button>
             </div>
             {recent.length === 0 ? (
               <EmptyState navigate={navigate} />
@@ -129,7 +137,7 @@ export default function Dashboard() {
                 {recent.map((q) => (
                   <button
                     key={q.id}
-                    onClick={() => navigate(`/clients?open=${q.id}`)}
+                    onClick={() => navigate(`/admin/clients?open=${q.id}`)}
                     className="w-full text-left glass-panel p-3 hover:border-primary-300 dark:hover:border-primary-600 transition-colors"
                   >
                     <div className="flex items-center justify-between">
@@ -148,7 +156,7 @@ export default function Dashboard() {
               <h3 className="font-bold font-display text-slate-800 dark:text-white flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-primary-600" /> Recently Paid
               </h3>
-              <button onClick={() => navigate('/checkout')} className="text-xs font-semibold text-primary-700 dark:text-primary-400 hover:underline">View all</button>
+              <button onClick={() => navigate('/admin/payments')} className="text-xs font-semibold text-primary-700 dark:text-primary-400 hover:underline">View all</button>
             </div>
             {recentPaid.length === 0 ? (
               <div className="text-center py-8">
@@ -182,7 +190,7 @@ function EmptyState({ navigate }) {
     <div className="text-center py-10">
       <FileText className="h-10 w-10 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
       <p className="text-sm text-slate-500 dark:text-slate-400">No quotations yet. Create your first client to get started.</p>
-      <button onClick={() => navigate('/new-client')} className="btn-primary mt-4">
+      <button onClick={() => navigate('/admin/new-client')} className="btn-primary mt-4">
         <UserPlus className="h-4 w-4" /> New Client
       </button>
     </div>

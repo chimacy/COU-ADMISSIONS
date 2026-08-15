@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  CreditCard, Search, CheckCircle2, FileDown, Receipt, Loader2,
+  CreditCard, Search, CheckCircle2, FileDown, FilePlus2, Receipt, Loader2, MessageCircle,
 } from 'lucide-react'
 import DashboardLayout from '../components/Layout/DashboardLayout.jsx'
 import Card from '../components/UI/Card.jsx'
 import Modal from '../components/UI/Modal.jsx'
 import { Input, Select } from '../components/UI/FormField.jsx'
-import { getQuotations, markQuotationPaid } from '../utils/db.js'
+import { getQuotations, markQuotationPaid, generateInvoiceNumber } from '../utils/db.js'
 import { formatCurrency, formatDate } from '../utils/format.js'
 import { statusBadgeStyle, STATUS } from '../utils/evaluation.js'
 import { useSettings } from '../context/SettingsContext.jsx'
-import { downloadInvoicePDF } from '../utils/pdfGenerator.js'
+import { buildWhatsAppLink, buildAdminOutreachMessage } from '../utils/whatsapp.js'
 
 export default function Checkout() {
   const { settings } = useSettings()
@@ -21,6 +21,7 @@ export default function Checkout() {
   const [paying, setPaying] = useState(null)
   const [form, setForm] = useState({ amount: '', method: 'Bank Transfer', date: new Date().toISOString().slice(0, 10) })
   const [saving, setSaving] = useState(false)
+  const [busyId, setBusyId] = useState(null)
 
   const refresh = () => {
     setLoading(true)
@@ -49,25 +50,56 @@ export default function Checkout() {
     setForm({ amount: record.price, method: 'Bank Transfer', date: new Date().toISOString().slice(0, 10) })
   }
 
+  // FIXED: this now ONLY confirms payment. It does not generate or download
+  // anything. Generating and downloading an invoice are now separate,
+  // deliberate actions the admin takes afterward.
   async function confirmPayment() {
     if (!paying) return
     setSaving(true)
     try {
-      const invoiceNumber = `INV-${paying.quotationNumber?.replace('CHM-', '') || Date.now()}`
-      const updated = await markQuotationPaid(paying.id, {
+      await markQuotationPaid(paying.id, {
         amount: Number(form.amount) || 0,
         method: form.method,
         date: form.date,
-        invoiceNumber,
       })
       setPaying(null)
       refresh()
-      downloadInvoicePDF(updated, settings)
     } catch (err) {
       alert(err.message || 'Failed to record payment.')
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleGenerateInvoice(record) {
+    setBusyId(record.id)
+    try {
+      await generateInvoiceNumber(record.id)
+      refresh()
+    } catch (err) {
+      alert(err.message || 'Failed to generate invoice.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleDownloadInvoice(record) {
+    setBusyId(record.id)
+    try {
+      const { downloadInvoicePDF } = await import('../utils/pdfGenerator.js')
+      await downloadInvoicePDF(record, settings)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  function handleWhatsApp(record) {
+    const message = buildAdminOutreachMessage({
+      clientFirstName: (record.clientName || '').split(' ')[0],
+      requestNumber: record.quotationNumber,
+      programmeName: record.programme,
+    })
+    window.open(buildWhatsAppLink(record.phone, message), '_blank')
   }
 
   return (
@@ -100,7 +132,7 @@ export default function Checkout() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[820px]">
+              <table className="w-full text-sm min-w-[900px]">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-primary-50/60 dark:bg-slate-800/50 border-b border-primary-100 dark:border-slate-700">
                     <th className="px-4 py-3 font-semibold">Client</th>
@@ -113,7 +145,7 @@ export default function Checkout() {
                 </thead>
                 <tbody>
                   {filtered.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-primary-50/40 dark:hover:bg-slate-800/30 transition-colors">
+                    <tr key={r.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0">
                       <td className="px-4 py-3 font-medium text-slate-800 dark:text-white">{r.clientName}</td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{r.programme}</td>
                       <td className="px-4 py-3"><span className={`badge ${statusBadgeStyle(r.status)}`}>{r.status}</span></td>
@@ -128,15 +160,23 @@ export default function Checkout() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <button onClick={() => handleWhatsApp(r)} title="Contact on WhatsApp" className="btn-secondary !px-2.5 !py-1.5 !text-xs">
+                            <MessageCircle className="h-3.5 w-3.5" />
+                          </button>
                           {!r.paid && (
                             <button onClick={() => openPay(r)} className="btn-primary !px-3 !py-1.5 !text-xs">
-                              <CreditCard className="h-3.5 w-3.5" /> Record Payment
+                              <CreditCard className="h-3.5 w-3.5" /> Confirm Payment
                             </button>
                           )}
-                          {r.paid && (
-                            <button onClick={() => downloadInvoicePDF(r, settings)} className="btn-secondary !px-3 !py-1.5 !text-xs">
-                              <FileDown className="h-3.5 w-3.5" /> Invoice
+                          {r.paid && !r.invoiceNumber && (
+                            <button onClick={() => handleGenerateInvoice(r)} disabled={busyId === r.id} className="btn-secondary !px-3 !py-1.5 !text-xs">
+                              {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus2 className="h-3.5 w-3.5" />} Generate Invoice
+                            </button>
+                          )}
+                          {r.paid && r.invoiceNumber && (
+                            <button onClick={() => handleDownloadInvoice(r)} disabled={busyId === r.id} className="btn-secondary !px-3 !py-1.5 !text-xs">
+                              {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />} Download Invoice
                             </button>
                           )}
                         </div>
@@ -153,13 +193,13 @@ export default function Checkout() {
       <Modal
         open={!!paying}
         onClose={() => setPaying(null)}
-        title="Record Payment"
+        title="Confirm Payment"
         footer={
           <>
             <button className="btn-secondary" onClick={() => setPaying(null)}>Cancel</button>
             <button className="btn-primary" onClick={confirmPayment} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4" />}
-              Confirm &amp; Generate Invoice
+              Confirm Payment
             </button>
           </>
         }
@@ -175,9 +215,10 @@ export default function Checkout() {
               <option>Bank Transfer</option>
               <option>Cash</option>
               <option>POS / Card</option>
-              <option>Online Payment</option>
+              <option>Flutterwave (Online)</option>
             </Select>
             <Input label="Payment Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            <p className="text-[11px] text-slate-400">This only marks the payment as confirmed. Invoice generation is a separate step afterward.</p>
           </div>
         )}
       </Modal>

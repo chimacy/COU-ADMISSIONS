@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
-  Save, Upload, Trash2, Download, Building2, Loader2, Palette,
+  Save, Upload, Trash2, Download, Building2, Loader2, Palette, MessageCircle, CreditCard, ShieldAlert,
 } from 'lucide-react'
 import DashboardLayout from '../components/Layout/DashboardLayout.jsx'
 import Card from '../components/UI/Card.jsx'
 import { Input, Textarea, Select } from '../components/UI/FormField.jsx'
 import { useSettings } from '../context/SettingsContext.jsx'
 import { exportAllData } from '../utils/db.js'
+import { validateImageFile, compressImage } from '../utils/image.js'
 
 export default function Settings() {
   const { settings, updateSettings, uploadBrandingImage, loading } = useSettings()
@@ -27,28 +28,56 @@ export default function Settings() {
     }
   }
 
-  async function handleUpload(kind) {
+  function handleUpload(kind) {
+    // kind: 'logo' | 'signature'
     return async (e) => {
       const file = e.target.files?.[0]
+      e.target.value = '' // allow re-selecting the same file later
       if (!file) return
+
+      const validationError = validateImageFile(file)
+      if (validationError) {
+        alert(validationError)
+        return
+      }
+
       setUploading(kind)
       try {
-        const url = await uploadBrandingImage(file, kind)
-        setForm((f) => ({ ...f, [kind === 'logo' ? 'logo_url' : 'signature_url']: url }))
+        const compressed = await compressImage(file, { maxDimension: kind === 'logo' ? 512 : 400, quality: 0.85 })
+        const url = await uploadBrandingImage(compressed, kind)
+        const field = kind === 'logo' ? 'logo_url' : 'signature_url'
+
+        // THE FIX: save straight to Supabase the moment the upload finishes,
+        // instead of only updating local form state and waiting for a
+        // separate "Save Settings" click. This is what was causing the logo
+        // to "not really persist" - it only ever saved if the admin
+        // remembered to click Save afterward. Because SettingsContext
+        // broadcasts this via Supabase Realtime, it now shows up in the
+        // sidebar, topbar, login screen, and homepage immediately, on every
+        // device, without any extra step.
+        await updateSettings({ [field]: url })
+        setForm((f) => ({ ...f, [field]: url }))
       } catch (err) {
-        alert(err.message || 'Upload failed.')
+        alert(err.message || 'Upload failed. Please try a different image.')
       } finally {
         setUploading('')
       }
     }
   }
 
+  async function handleRemoveImage(kind) {
+    const field = kind === 'logo' ? 'logo_url' : 'signature_url'
+    try {
+      await updateSettings({ [field]: '' })
+      setForm((f) => ({ ...f, [field]: '' }))
+    } catch (err) {
+      alert(err.message || 'Failed to remove image.')
+    }
+  }
+
   async function handleSave() {
     setSaving(true)
     try {
-      // updateSettings writes to Supabase - a realtime event then pushes this
-      // exact change out to every other logged-in device/browser instantly,
-      // which is what makes branding permanent no matter where it's viewed.
       await updateSettings(form)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -114,6 +143,18 @@ export default function Settings() {
             <Input label="Currency Symbol" value={form.currency_symbol} onChange={handleChange('currency_symbol')} />
           </div>
 
+          <div className="pt-2 border-t border-primary-100 dark:border-slate-700">
+            <div className="flex items-center gap-2 mt-4 mb-3">
+              <MessageCircle className="h-4 w-4 text-primary-600" />
+              <h4 className="font-semibold text-sm text-slate-800 dark:text-white">WhatsApp &amp; Website</h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input label="WhatsApp Number" value={form.whatsapp_number} onChange={handleChange('whatsapp_number')} placeholder="e.g. 08030000000" />
+              <Input label="Website (optional)" value={form.website} onChange={handleChange('website')} placeholder="e.g. https://chimacyofunn.com" />
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">Used for every "Chat on WhatsApp" button across the Client and Admin Portals. Local format (0803...) is fine, it's converted automatically.</p>
+          </div>
+
           <div className="flex flex-wrap gap-3 pt-2">
             <button onClick={handleSave} disabled={saving} className="btn-primary">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Settings
@@ -130,12 +171,14 @@ export default function Settings() {
             </div>
             <div className="space-y-4">
               <ColorField label="Primary Color" value={form.primary_color} onChange={handleChange('primary_color')} />
+              <ColorField label="Secondary Color" value={form.secondary_color} onChange={handleChange('secondary_color')} />
               <ColorField label="Accent Color" value={form.accent_color} onChange={handleChange('accent_color')} />
             </div>
           </Card>
 
           <Card>
-            <h3 className="font-bold font-display text-slate-800 dark:text-white mb-4">Branding Assets</h3>
+            <h3 className="font-bold font-display text-slate-800 dark:text-white mb-1">Branding Assets</h3>
+            <p className="text-[11px] text-slate-400 mb-4">Uploads save and go live everywhere immediately — no extra step needed.</p>
             <div className="space-y-4">
               <div>
                 <p className="label-field">Company Logo</p>
@@ -147,9 +190,9 @@ export default function Settings() {
                     <button onClick={() => logoInputRef.current?.click()} className="btn-secondary !px-3" disabled={uploading === 'logo'}>
                       {uploading === 'logo' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                     </button>
-                    {form.logo_url && <button onClick={() => setForm((f) => ({ ...f, logo_url: '' }))} className="btn-danger !px-3"><Trash2 className="h-4 w-4" /></button>}
+                    {form.logo_url && <button onClick={() => handleRemoveImage('logo')} className="btn-danger !px-3"><Trash2 className="h-4 w-4" /></button>}
                   </div>
-                  <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload('logo')} />
+                  <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" onChange={handleUpload('logo')} />
                 </div>
               </div>
 
@@ -163,19 +206,33 @@ export default function Settings() {
                     <button onClick={() => signatureInputRef.current?.click()} className="btn-secondary !px-3" disabled={uploading === 'signature'}>
                       {uploading === 'signature' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                     </button>
-                    {form.signature_url && <button onClick={() => setForm((f) => ({ ...f, signature_url: '' }))} className="btn-danger !px-3"><Trash2 className="h-4 w-4" /></button>}
+                    {form.signature_url && <button onClick={() => handleRemoveImage('signature')} className="btn-danger !px-3"><Trash2 className="h-4 w-4" /></button>}
                   </div>
-                  <input ref={signatureInputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload('signature')} />
+                  <input ref={signatureInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" onChange={handleUpload('signature')} />
                 </div>
               </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">Uploaded here, save Settings to publish it everywhere.</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">Accepts PNG, JPG, JPEG, or WEBP. Automatically resized before upload.</p>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center gap-2 mb-2">
+              <CreditCard className="h-4 w-4 text-primary-600" />
+              <h3 className="font-bold font-display text-slate-800 dark:text-white">Flutterwave (Public Key Only)</h3>
+            </div>
+            <Input label="Flutterwave Public Key" value={form.flutterwave_public_key || ''} onChange={handleChange('flutterwave_public_key')} placeholder="FLWPUBK-..." />
+            <div className="flex gap-2 mt-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-3">
+              <ShieldAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                Only the <strong>public</strong> key ever goes here. Your Secret Key must be set as a Supabase Edge Function environment variable, never in this app — see the README.
+              </p>
             </div>
           </Card>
 
           <Card>
             <h3 className="font-bold font-display text-slate-800 dark:text-white mb-2">Backup</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              Download a full JSON snapshot of programmes, rules, and client/quotation records for offline reporting or record-keeping. The live data itself always lives in your Supabase database, accessible from any device.
+              Download a full JSON snapshot of programmes, rules, requests, and client records. The live data always lives in Supabase, accessible from any device.
             </p>
             <button onClick={handleExport} disabled={exporting} className="btn-secondary w-full">
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export Full Backup (JSON)

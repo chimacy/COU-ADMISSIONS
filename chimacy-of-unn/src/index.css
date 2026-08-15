@@ -3,10 +3,6 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    scroll-behavior: smooth;
-  }
-
   :root {
     /* Overridden at runtime from Settings (Supabase) so the brand color
        an admin picks is applied everywhere, on every device, permanently -
@@ -16,7 +12,7 @@
   }
 
   body {
-    @apply bg-white text-slate-800 dark:bg-slate-950 dark:text-slate-100 font-sans antialiased transition-colors duration-300;
+    @apply bg-white text-slate-800 dark:bg-slate-950 dark:text-slate-100 font-sans antialiased;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -39,39 +35,56 @@
 }
 
 @layer components {
-  /* Glassmorphism card - white with a faint green tint */
+  /* PERFORMANCE NOTE: cards used to use `backdrop-blur-xl`. backdrop-filter is
+     one of the most GPU-expensive CSS effects that exists, and this class was
+     applied to dozens of stacked/scrolling elements per page - that was the
+     single biggest cause of sluggish scrolling and animation on Android.
+     Cards are now solid/opaque (cheap to paint and composite). Blur is kept
+     only on the two "chrome" surfaces that appear once per screen
+     (Sidebar, Topbar) via `.glass-chrome`, where the cost is negligible. */
   .glass-card {
-    @apply bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-primary-100/60 dark:border-slate-700/50 shadow-glass dark:shadow-glass-dark rounded-2xl;
+    @apply bg-white dark:bg-slate-900 border border-primary-100/70 dark:border-slate-700/50 shadow-soft rounded-2xl;
   }
 
   .glass-panel {
-    @apply bg-primary-50/40 dark:bg-slate-900/40 backdrop-blur-md border border-primary-100/50 dark:border-slate-700/40 rounded-xl;
+    @apply bg-primary-50/60 dark:bg-slate-900/60 border border-primary-100/50 dark:border-slate-700/40 rounded-xl;
+  }
+
+  .glass-chrome {
+    @apply bg-white/90 dark:bg-slate-900/80 backdrop-blur-md border border-primary-100/60 dark:border-slate-700/50 shadow-soft;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-sm px-4 py-2.5 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 whitespace-nowrap;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-sm px-4 py-2.5 transition-transform duration-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 whitespace-nowrap;
   }
 
   .btn-primary {
-    @apply btn text-white shadow-lg hover:-translate-y-0.5;
+    @apply btn text-white shadow-md;
     background: linear-gradient(135deg, var(--color-brand-primary), #16a34a);
-    box-shadow: 0 10px 25px -8px color-mix(in srgb, var(--color-brand-primary) 55%, transparent);
   }
 
   .btn-secondary {
-    @apply btn bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-primary-200 dark:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-700;
+    @apply btn bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-primary-200 dark:border-slate-700;
   }
 
   .btn-danger {
-    @apply btn bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 hover:bg-red-100 dark:hover:bg-red-950;
+    @apply btn bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900;
   }
 
   .btn-ghost {
-    @apply btn bg-transparent text-slate-600 dark:text-slate-300 hover:bg-primary-50 dark:hover:bg-slate-800;
+    @apply btn bg-transparent text-slate-600 dark:text-slate-300;
+  }
+
+  /* Hover/press feedback only where it's cheap (no hover on touch devices) */
+  @media (hover: hover) {
+    .btn-secondary:hover { @apply bg-primary-50 dark:bg-slate-700; }
+    .btn-danger:hover { @apply bg-red-100 dark:bg-red-950; }
+    .btn-ghost:hover { @apply bg-primary-50 dark:bg-slate-800; }
+    .btn-primary:hover { @apply -translate-y-0.5; }
   }
 
   .input-field {
-    @apply w-full rounded-xl border border-primary-100 dark:border-slate-700 bg-white dark:bg-slate-800/60 px-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-all focus:border-primary-400 focus:ring-4 focus:ring-primary-500/10;
+    @apply w-full rounded-xl border border-primary-100 dark:border-slate-700 bg-white dark:bg-slate-800/60 px-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors focus:border-primary-400 focus:ring-4 focus:ring-primary-500/10;
   }
 
   .label-field {

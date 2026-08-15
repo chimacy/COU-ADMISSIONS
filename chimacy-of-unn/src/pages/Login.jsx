@@ -17,7 +17,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false)
 
   if (isAuthenticated) {
-    const dest = location.state?.from?.pathname || '/'
+    const dest = location.state?.from?.pathname || '/admin'
     return <Navigate to={dest} replace />
   }
 
@@ -27,7 +27,7 @@ export default function Login() {
     setSubmitting(true)
     try {
       await login(email.trim(), password)
-      navigate(location.state?.from?.pathname || '/', { replace: true })
+      navigate(location.state?.from?.pathname || '/admin', { replace: true })
     } catch (err) {
       setError(err.message === 'Invalid login credentials'
         ? 'Incorrect ID or password. Please try again.'
