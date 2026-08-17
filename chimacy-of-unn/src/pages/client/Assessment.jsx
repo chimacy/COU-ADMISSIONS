@@ -42,6 +42,7 @@ export default function Assessment() {
   const [config, setConfig] = useState(null)
   const [programmes, setProgrammes] = useState([])
   const [loadingConfig, setLoadingConfig] = useState(true)
+  const [loadError, setLoadError] = useState(null)
 
   const [step, setStep] = useState('form') // form -> result -> confirmation
   const [form, setForm] = useState(emptyForm)
@@ -53,10 +54,17 @@ export default function Assessment() {
   const [submitting, setSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState(null)
 
-  useEffect(() => {
+  function loadAssessmentData() {
+    setLoadingConfig(true)
+    setLoadError(null)
     Promise.all([getAssessmentConfig(), listProgrammesPublic()])
       .then(([cfg, progs]) => { setConfig(cfg); setProgrammes(progs) })
+      .catch((err) => setLoadError(err.message || 'Failed to load the eligibility checker.'))
       .finally(() => setLoadingConfig(false))
+  }
+
+  useEffect(() => {
+    loadAssessmentData()
   }, [])
 
   const selectedProgramme = useMemo(
@@ -164,6 +172,19 @@ export default function Assessment() {
     return (
       <ClientPortalLayout>
         <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-primary-500" /></div>
+      </ClientPortalLayout>
+    )
+  }
+
+  if (loadError || !config) {
+    return (
+      <ClientPortalLayout>
+        <div className="max-w-md mx-auto px-4 sm:px-6 py-24 text-center">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            We couldn't load the eligibility checker right now. Please check your connection and try again.
+          </p>
+          <button onClick={loadAssessmentData} className="btn-primary">Try Again</button>
+        </div>
       </ClientPortalLayout>
     )
   }

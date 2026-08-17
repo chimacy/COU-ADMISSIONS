@@ -3,31 +3,58 @@ import { Routes, Route } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import ConfigNeeded from './pages/ConfigNeeded.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { NotificationProvider } from './context/NotificationContext.jsx'
 import { isSupabaseConfigured } from './lib/supabaseClient.js'
+
+// After a new deploy, a browser tab that's been open (or has an old cached
+// page) may still be holding file names from the PREVIOUS build. Clicking
+// into a lazy-loaded page then tries to fetch a JS file that no longer
+// exists, fails, and previously just crashed to a blank screen. This wrapper
+// catches that specific failure and reloads the page ONE time automatically
+// to pick up the current build - after that it lets a real error through
+// instead of reloading forever.
+function lazyWithReload(importer) {
+  return lazy(async () => {
+    const key = 'chimacy_chunk_reload_attempted'
+    try {
+      const mod = await importer()
+      sessionStorage.removeItem(key)
+      return mod
+    } catch (err) {
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, 'true')
+        window.location.reload()
+        // Reloading now - return a harmless placeholder while that happens.
+        return { default: () => null }
+      }
+      throw err
+    }
+  })
+}
 
 // Every route is lazy-loaded: a public visitor never downloads the admin
 // dashboard's JS, and an admin never downloads the client assessment flow's
 // JS until they actually navigate there. This is the single biggest lever
 // for a fast first paint on a slow mobile connection.
-const Landing = lazy(() => import('./pages/client/Landing.jsx'))
-const Assessment = lazy(() => import('./pages/client/Assessment.jsx'))
-const TrackRequest = lazy(() => import('./pages/client/TrackRequest.jsx'))
+const Landing = lazyWithReload(() => import('./pages/client/Landing.jsx'))
+const Assessment = lazyWithReload(() => import('./pages/client/Assessment.jsx'))
+const TrackRequest = lazyWithReload(() => import('./pages/client/TrackRequest.jsx'))
 
-const Login = lazy(() => import('./pages/Login.jsx'))
-const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
-const NewClient = lazy(() => import('./pages/NewClient.jsx'))
-const ClientRecords = lazy(() => import('./pages/ClientRecords.jsx'))
-const GenerateQuotation = lazy(() => import('./pages/GenerateQuotation.jsx'))
-const Checkout = lazy(() => import('./pages/Checkout.jsx'))
-const Requests = lazy(() => import('./pages/Requests.jsx'))
-const Notifications = lazy(() => import('./pages/Notifications.jsx'))
-const PricingDatabase = lazy(() => import('./pages/PricingDatabase.jsx'))
-const RulesPage = lazy(() => import('./pages/RulesPage.jsx'))
-const Administrators = lazy(() => import('./pages/Administrators.jsx'))
-const AggregateSettings = lazy(() => import('./pages/AggregateSettings.jsx'))
-const Settings = lazy(() => import('./pages/Settings.jsx'))
-const NotFound = lazy(() => import('./pages/NotFound.jsx'))
+const Login = lazyWithReload(() => import('./pages/Login.jsx'))
+const Dashboard = lazyWithReload(() => import('./pages/Dashboard.jsx'))
+const NewClient = lazyWithReload(() => import('./pages/NewClient.jsx'))
+const ClientRecords = lazyWithReload(() => import('./pages/ClientRecords.jsx'))
+const GenerateQuotation = lazyWithReload(() => import('./pages/GenerateQuotation.jsx'))
+const Checkout = lazyWithReload(() => import('./pages/Checkout.jsx'))
+const Requests = lazyWithReload(() => import('./pages/Requests.jsx'))
+const Notifications = lazyWithReload(() => import('./pages/Notifications.jsx'))
+const PricingDatabase = lazyWithReload(() => import('./pages/PricingDatabase.jsx'))
+const RulesPage = lazyWithReload(() => import('./pages/RulesPage.jsx'))
+const Administrators = lazyWithReload(() => import('./pages/Administrators.jsx'))
+const AggregateSettings = lazyWithReload(() => import('./pages/AggregateSettings.jsx'))
+const Settings = lazyWithReload(() => import('./pages/Settings.jsx'))
+const NotFound = lazyWithReload(() => import('./pages/NotFound.jsx'))
 
 function PageFallback() {
   return (
@@ -51,32 +78,34 @@ export default function App() {
   }
 
   return (
-    <Suspense fallback={<PageFallback />}>
-      <Routes>
-        {/* -------- Public Client Portal -------- */}
-        <Route path="/" element={<Landing />} />
-        <Route path="/check-eligibility" element={<Assessment />} />
-        <Route path="/request-assistance" element={<Assessment />} />
-        <Route path="/track-request" element={<TrackRequest />} />
+    <ErrorBoundary>
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          {/* -------- Public Client Portal -------- */}
+          <Route path="/" element={<Landing />} />
+          <Route path="/check-eligibility" element={<Assessment />} />
+          <Route path="/request-assistance" element={<Assessment />} />
+          <Route path="/track-request" element={<TrackRequest />} />
 
-        {/* -------- Admin Portal -------- */}
-        <Route path="/admin/login" element={<Login />} />
-        <Route path="/admin" element={<ProtectedRoute><AdminArea><Dashboard /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/requests" element={<ProtectedRoute><AdminArea><Requests /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/notifications" element={<ProtectedRoute><AdminArea><Notifications /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/new-client" element={<ProtectedRoute><AdminArea><NewClient /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/clients" element={<ProtectedRoute><AdminArea><ClientRecords /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/quotation" element={<ProtectedRoute><AdminArea><GenerateQuotation /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/payments" element={<ProtectedRoute><AdminArea><Checkout /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/pricing" element={<ProtectedRoute requireSuperAdmin><AdminArea><PricingDatabase /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/benchmarks" element={<ProtectedRoute requireSuperAdmin><AdminArea><PricingDatabase /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/rules" element={<ProtectedRoute requireSuperAdmin><AdminArea><RulesPage /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/aggregate-settings" element={<ProtectedRoute requireSuperAdmin><AdminArea><AggregateSettings /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/administrators" element={<ProtectedRoute requireSuperAdmin><AdminArea><Administrators /></AdminArea></ProtectedRoute>} />
-        <Route path="/admin/settings" element={<ProtectedRoute requireSuperAdmin><AdminArea><Settings /></AdminArea></ProtectedRoute>} />
+          {/* -------- Admin Portal -------- */}
+          <Route path="/admin/login" element={<Login />} />
+          <Route path="/admin" element={<ProtectedRoute><AdminArea><Dashboard /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/requests" element={<ProtectedRoute><AdminArea><Requests /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/notifications" element={<ProtectedRoute><AdminArea><Notifications /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/new-client" element={<ProtectedRoute><AdminArea><NewClient /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/clients" element={<ProtectedRoute><AdminArea><ClientRecords /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/quotation" element={<ProtectedRoute><AdminArea><GenerateQuotation /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/payments" element={<ProtectedRoute><AdminArea><Checkout /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/pricing" element={<ProtectedRoute requireSuperAdmin><AdminArea><PricingDatabase /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/benchmarks" element={<ProtectedRoute requireSuperAdmin><AdminArea><PricingDatabase /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/rules" element={<ProtectedRoute requireSuperAdmin><AdminArea><RulesPage /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/aggregate-settings" element={<ProtectedRoute requireSuperAdmin><AdminArea><AggregateSettings /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/administrators" element={<ProtectedRoute requireSuperAdmin><AdminArea><Administrators /></AdminArea></ProtectedRoute>} />
+          <Route path="/admin/settings" element={<ProtectedRoute requireSuperAdmin><AdminArea><Settings /></AdminArea></ProtectedRoute>} />
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </Suspense>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   )
 }
